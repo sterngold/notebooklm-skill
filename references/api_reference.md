@@ -8,10 +8,10 @@ Complete API documentation for all NotebookLM skill modules.
 
 ```bash
 # ✅ CORRECT:
-python scripts/run.py [script_name].py [arguments]
+python3 scripts/run.py [script_name].py [arguments]
 
 # ❌ WRONG:
-python scripts/[script_name].py [arguments]  # Will fail without venv!
+python3 scripts/[script_name].py [arguments]  # Will fail without venv!
 ```
 
 ## Core Scripts
@@ -21,16 +21,16 @@ Query NotebookLM with automated browser interaction.
 
 ```bash
 # Basic usage
-python scripts/run.py ask_question.py --question "Your question"
+python3 scripts/run.py ask_question.py --question "Your question"
 
 # With specific notebook
-python scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
+python3 scripts/run.py ask_question.py --question "..." --notebook-id notebook-id
 
 # With direct URL
-python scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
+python3 scripts/run.py ask_question.py --question "..." --notebook-url "https://..."
 
 # Show browser (debugging)
-python scripts/run.py ask_question.py --question "..." --show-browser
+python3 scripts/run.py ask_question.py --question "..." --show-browser
 ```
 
 **Parameters:**
@@ -46,35 +46,35 @@ Manage notebook library with CRUD operations.
 
 ```bash
 # Smart Add (discover content first)
-python scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
+python3 scripts/run.py ask_question.py --question "What is the content of this notebook? What topics are covered? Provide a complete overview briefly and concisely" --notebook-url "[URL]"
 # Then add with discovered info
-python scripts/run.py notebook_manager.py add \
+python3 scripts/run.py notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Name" \
   --description "Description" \
   --topics "topic1,topic2"
 
 # Direct add (when you know the content)
-python scripts/run.py notebook_manager.py add \
+python3 scripts/run.py notebook_manager.py add \
   --url "https://notebooklm.google.com/notebook/..." \
   --name "Name" \
   --description "What it contains" \
   --topics "topic1,topic2"
 
 # List notebooks
-python scripts/run.py notebook_manager.py list
+python3 scripts/run.py notebook_manager.py list
 
 # Search notebooks
-python scripts/run.py notebook_manager.py search --query "keyword"
+python3 scripts/run.py notebook_manager.py search --query "keyword"
 
 # Activate notebook
-python scripts/run.py notebook_manager.py activate --id notebook-id
+python3 scripts/run.py notebook_manager.py activate --id notebook-id
 
 # Remove notebook
-python scripts/run.py notebook_manager.py remove --id notebook-id
+python3 scripts/run.py notebook_manager.py remove --id notebook-id
 
 # Show statistics
-python scripts/run.py notebook_manager.py stats
+python3 scripts/run.py notebook_manager.py stats
 ```
 
 **Commands:**
@@ -90,16 +90,16 @@ Handle Google authentication and browser state.
 
 ```bash
 # Setup (browser visible for login)
-python scripts/run.py auth_manager.py setup
+python3 scripts/run.py auth_manager.py setup
 
 # Check status
-python scripts/run.py auth_manager.py status
+python3 scripts/run.py auth_manager.py status
 
 # Re-authenticate
-python scripts/run.py auth_manager.py reauth
+python3 scripts/run.py auth_manager.py reauth
 
 # Clear authentication
-python scripts/run.py auth_manager.py clear
+python3 scripts/run.py auth_manager.py clear
 ```
 
 **Commands:**
@@ -113,16 +113,16 @@ Clean skill data with preservation options.
 
 ```bash
 # Preview cleanup
-python scripts/run.py cleanup_manager.py
+python3 scripts/run.py cleanup_manager.py
 
 # Execute cleanup
-python scripts/run.py cleanup_manager.py --confirm
+python3 scripts/run.py cleanup_manager.py --confirm
 
 # Keep library
-python scripts/run.py cleanup_manager.py --confirm --preserve-library
+python3 scripts/run.py cleanup_manager.py --confirm --preserve-library
 
 # Force without prompt
-python scripts/run.py cleanup_manager.py --confirm --force
+python3 scripts/run.py cleanup_manager.py --confirm --force
 ```
 
 **Options:**
@@ -135,11 +135,11 @@ Script wrapper that handles environment setup.
 
 ```bash
 # Usage
-python scripts/run.py [script_name].py [arguments]
+python3 scripts/run.py [script_name].py [arguments]
 
 # Examples
-python scripts/run.py auth_manager.py status
-python scripts/run.py ask_question.py --question "..."
+python3 scripts/run.py auth_manager.py status
+python3 scripts/run.py ask_question.py --question "..."
 ```
 
 **Automatic actions:**
@@ -158,7 +158,7 @@ import json
 
 # Always use run.py wrapper
 result = subprocess.run([
-    "python", "scripts/run.py", "ask_question.py",
+    "python3", "scripts/run.py", "ask_question.py",
     "--question", "Your question",
     "--notebook-id", "notebook-id"
 ], capture_output=True, text=True)
@@ -214,7 +214,7 @@ Common patterns:
 ```python
 # Using run.py prevents most errors
 result = subprocess.run([
-    "python", "scripts/run.py", "ask_question.py",
+    "python3", "scripts/run.py", "ask_question.py",
     "--question", "Question"
 ], capture_output=True, text=True)
 
@@ -225,7 +225,7 @@ if result.returncode != 0:
         pass
     elif "not authenticated" in error.lower():
         # Run auth setup
-        subprocess.run(["python", "scripts/run.py", "auth_manager.py", "setup"])
+        subprocess.run(["python3", "scripts/run.py", "auth_manager.py", "setup"])
 ```
 
 ## Rate Limits
@@ -247,7 +247,7 @@ import subprocess
 
 def query(question, notebook_id):
     result = subprocess.run([
-        "python", "scripts/run.py", "ask_question.py",
+        "python3", "scripts/run.py", "ask_question.py",
         "--question", question,
         "--notebook-id", notebook_id
     ], capture_output=True, text=True)
@@ -269,7 +269,7 @@ def batch_research(questions, notebook_id):
     results = []
     for question in questions:
         result = subprocess.run([
-            "python", "scripts/run.py", "ask_question.py",
+            "python3", "scripts/run.py", "ask_question.py",
             "--question", question,
             "--notebook-id", notebook_id
         ], capture_output=True, text=True)
