@@ -2,14 +2,14 @@
 
 # NotebookLM Claude Code Skill
 
-**Let [Claude Code](https://github.com/anthropics/claude-code) chat directly with NotebookLM for source-grounded answers based exclusively on your uploaded documents**
+**A local [Claude Code](https://github.com/anthropics/claude-code) skill for source-grounded answers from your own NotebookLM notebooks**
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-purple.svg)](https://www.anthropic.com/news/skills)
 [![Based on](https://img.shields.io/badge/Based%20on-NotebookLM%20MCP-green.svg)](https://github.com/PleasePrompto/notebooklm-mcp)
-[![GitHub](https://img.shields.io/github/stars/PleasePrompto/notebooklm-skill?style=social)](https://github.com/PleasePrompto/notebooklm-skill)
+[![GitHub](https://img.shields.io/github/stars/sterngold/notebooklm-skill?style=social)](https://github.com/sterngold/notebooklm-skill)
 
-> Use this skill to query your Google NotebookLM notebooks directly from Claude Code for source-grounded, citation-backed answers from Gemini. Browser automation, library management, persistent auth. Drastically reduced hallucinations - answers only from your uploaded documents.
+> Query Google NotebookLM directly from Claude Code for citation-backed answers from uploaded documents. Useful when an agent needs source-grounded context without repeatedly stuffing docs into the model window.
 
 [Installation](#installation) • [Quick Start](#quick-start) • [Why NotebookLM](#why-notebooklm-not-local-rag) • [How It Works](#how-it-works) • [MCP Alternative](https://github.com/PleasePrompto/notebooklm-mcp)
 
@@ -27,7 +27,7 @@ The web UI runs skills in a sandbox without network access, which this skill req
 
 ## The Problem
 
-When you tell [Claude Code](https://github.com/anthropics/claude-code) to "search through my local documentation", here's what happens:
+When you tell an AI coding agent to "search through my documentation", here's what often happens:
 - **Massive token consumption**: Searching through documentation means reading multiple files repeatedly
 - **Inaccurate retrieval**: Searches for keywords, misses context and connections between docs
 - **Hallucinations**: When it can't find something, it invents plausible-sounding APIs
@@ -35,7 +35,7 @@ When you tell [Claude Code](https://github.com/anthropics/claude-code) to "searc
 
 ## The Solution
 
-This Claude Code Skill lets [Claude Code](https://github.com/anthropics/claude-code) chat directly with [**NotebookLM**](https://notebooklm.google/) — Google's **source-grounded knowledge base** powered by Gemini 2.5 that provides intelligent, synthesized answers exclusively from your uploaded documents.
+This Claude Code Skill lets [Claude Code](https://github.com/anthropics/claude-code) chat directly with [**NotebookLM**](https://notebooklm.google/) — Google's source-grounded knowledge base that synthesizes answers from your uploaded documents.
 
 ```
 Your Task → Claude asks NotebookLM → Gemini synthesizes answer → Claude writes correct code
@@ -74,7 +74,7 @@ mkdir -p ~/.claude/skills
 
 # 2. Clone this repository
 cd ~/.claude/skills
-git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
+git clone https://github.com/sterngold/notebooklm-skill notebooklm
 
 # 3. That's it! Open Claude Code and say:
 "What are my skills?"
@@ -374,7 +374,7 @@ That said, if you run into problems or have questions, feel free to open an issu
 
 ## Credits
 
-This skill is inspired by my [**NotebookLM MCP Server**](https://github.com/PleasePrompto/notebooklm-mcp) and provides an alternative implementation as a Claude Code Skill:
+This skill is based on the NotebookLM automation pattern from [**NotebookLM MCP Server**](https://github.com/PleasePrompto/notebooklm-mcp) and provides an alternative implementation as a Claude Code Skill:
 - Both use Patchright for browser automation (TypeScript for MCP, Python for Skill)
 - Skill version runs directly in Claude Code without MCP protocol
 - Stateless design optimized for skill architecture
@@ -397,7 +397,7 @@ Stop the copy-paste dance. Start getting accurate, grounded answers directly in 
 ```bash
 # Get started in 30 seconds
 cd ~/.claude/skills
-git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
+git clone https://github.com/sterngold/notebooklm-skill notebooklm
 # Open Claude Code: "What are my skills?"
 ```
 
@@ -405,7 +405,7 @@ git clone https://github.com/PleasePrompto/notebooklm-skill notebooklm
 
 <div align="center">
 
-Built as a Claude Code Skill adaptation of my [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp)
+Built as a Claude Code Skill adaptation of the [NotebookLM MCP Server](https://github.com/PleasePrompto/notebooklm-mcp) pattern
 
 For source-grounded, document-based research directly in Claude Code
 
