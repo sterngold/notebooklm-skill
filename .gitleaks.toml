@@ -1,0 +1,20 @@
+# gitleaks config — extends default ruleset
+# https://github.com/gitleaks/gitleaks
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Anders allowlist"
+paths = [
+  '''\.env\.example$''',
+  '''docs/.*\.md$''',
+  '''.*\.test\.(py|ts|js)$''',
+]
+
+# Examples in docs frequently contain fake tokens — allow common dummy patterns.
+regexes = [
+  '''sk-(test|fake|example|dummy)[a-zA-Z0-9_-]+''',
+  '''xoxb-1234567890-.*''',
+  '''ghp_EXAMPLE[a-zA-Z0-9]*''',
+]

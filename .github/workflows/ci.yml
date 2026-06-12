@@ -1,0 +1,131 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  detect:
+    name: detect stack
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.set.outputs.python }}
+      node:   ${{ steps.set.outputs.node }}
+      swift:  ${{ steps.set.outputs.swift }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: set
+        run: |
+          echo "python=$([ -f pyproject.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "node=$([ -f package.json ] && echo true || echo false)"     >> "$GITHUB_OUTPUT"
+          echo "swift=$([ -f Package.swift ] && echo true || echo false)"   >> "$GITHUB_OUTPUT"
+
+  commitlint:
+    name: conventional commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with: { fetch-depth: 0 }
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: .commitlintrc.json
+
+  gitleaks:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  python:
+    name: python lint + test
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "latest" }
+      # --all-extras: PEP 621 [project.optional-dependencies]
+      # --all-groups: PEP 735 [dependency-groups]
+      - run: uv sync --frozen --all-extras --all-groups
+      # ruff via uvx — no need to add ruff to project deps.
+      # Lint is advisory by default so legacy code doesn't block adoption.
+      # Flip continue-on-error to false once the repo lints clean.
+      - name: ruff check (advisory)
+        continue-on-error: true
+        run: uvx ruff@0.6.9 check .
+      - name: ruff format check (advisory)
+        continue-on-error: true
+        run: uvx ruff@0.6.9 format --check .
+      - name: pytest (advisory)
+        if: hashFiles('tests/**') != ''
+        continue-on-error: true
+        run: uv run pytest -q
+
+  node:
+    name: node lint + test
+    needs: detect
+    if: needs.detect.outputs.node == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      # npm install (not ci) tolerates lockfile drift and missing lockfile.
+      # Lock down to `npm ci` per-repo once the lockfile is reliably in sync.
+      - run: npm install --no-audit --no-fund
+      - name: lint (advisory)
+        continue-on-error: true
+        run: npm run lint --if-present
+      - name: test (advisory)
+        continue-on-error: true
+        run: npm test --if-present
+
+  swift:
+    name: swift build + test
+    needs: detect
+    if: needs.detect.outputs.swift == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: swift build (advisory)
+        continue-on-error: true
+        run: swift build
+      - name: swift test (advisory)
+        if: hashFiles('Tests/**') != ''
+        continue-on-error: true
+        run: swift test
+
+  ci:
+    name: ci
+    needs: [commitlint, gitleaks, python, node, swift]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: aggregate
+        run: |
+          # Fail if any required upstream job failed (skipped is OK for stack-conditional jobs)
+          for r in "${{ needs.commitlint.result }}" "${{ needs.gitleaks.result }}" \
+                   "${{ needs.python.result }}" "${{ needs.node.result }}" "${{ needs.swift.result }}"; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "Upstream job failed: $r"
+              exit 1
+            fi
+          done
+          echo "All required checks passed."
