@@ -4,14 +4,14 @@ version = "0.1.0"
 description = "Claude Code skill for source-grounded NotebookLM research from uploaded documents"
 requires-python = ">=3.10"
 dependencies = [
-  "patchright==1.55.2",
+  "patchright==1.60.1",
   "python-dotenv==1.2.2",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=9.1.1",
-  "ruff==0.6.9",
+  "ruff==0.15.20",
 ]
 
 [tool.pytest.ini_options]
@@ -21,4 +21,3 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-
