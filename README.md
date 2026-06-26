@@ -255,7 +255,7 @@ Note: The MCP server uses the same Patchright library but via TypeScript/npm eco
 
 ### Dependencies
 - **patchright==1.55.2**: Browser automation
-- **python-dotenv==1.0.0**: Environment configuration
+- **python-dotenv==1.2.2**: Environment configuration
 - Automatically installed in `.venv` on first use
 
 ### Data Storage
@@ -272,7 +272,11 @@ All data is stored locally within the skill directory:
 **Important Security Note:**
 - The `data/` directory contains sensitive authentication data and personal notebooks
 - It's automatically excluded from git via `.gitignore`
+- Scripts set owner-only permissions for `data/`, `state.json`, `auth_info.json`,
+  and `library.json` on platforms that support POSIX file modes
 - NEVER manually commit or share the contents of the `data/` directory
+- Use a dedicated Google account if your NotebookLM sources contain client,
+  financial, medical, or private personal material
 
 ### Session Model
 
@@ -303,6 +307,10 @@ For multi-step research, Claude automatically asks follow-up questions when need
 - **Rate limits** - Free tier has daily query limits
 - **Manual upload** - You must upload docs to NotebookLM first
 - **Share requirement** - Notebooks must be shared publicly
+- **Browser automation fragility** - NotebookLM is a web product, not a stable
+  public automation API. UI changes, anti-abuse systems, account policies, or
+  Google terms can break or limit this workflow. Use it only where you are
+  allowed to automate your own account.
 
 ---
 
@@ -321,7 +329,9 @@ Yes! They serve different purposes. Use the skill for quick Claude Code integrat
 Run: `"Clear NotebookLM browser data"` and try again.
 
 **Is my Google account secure?**
-Chrome runs locally on your machine. Your credentials never leave your computer. Use a dedicated Google account if you're concerned.
+Chrome runs locally on your machine. Your credentials never leave your computer,
+but the local browser state is still sensitive because it contains session
+material. Use a dedicated Google account if you're concerned.
 
 ---
 

@@ -17,7 +17,7 @@ import shutil
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from patchright.sync_api import sync_playwright, BrowserContext
 
@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
 from browser_utils import BrowserFactory
+from secure_storage import ensure_private_dir, harden_private_file, write_private_json
 
 
 class AuthManager:
@@ -42,8 +43,8 @@ class AuthManager:
     def __init__(self):
         """Initialize the authentication manager"""
         # Ensure directories exist
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        BROWSER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        ensure_private_dir(DATA_DIR)
+        ensure_private_dir(BROWSER_STATE_DIR)
 
         self.state_file = STATE_FILE
         self.auth_info_file = AUTH_INFO_FILE
@@ -64,22 +65,22 @@ class AuthManager:
     def get_auth_info(self) -> Dict[str, Any]:
         """Get authentication information"""
         info = {
-            'authenticated': self.is_authenticated(),
-            'state_file': str(self.state_file),
-            'state_exists': self.state_file.exists()
+            "authenticated": self.is_authenticated(),
+            "state_file": str(self.state_file),
+            "state_exists": self.state_file.exists(),
         }
 
         if self.auth_info_file.exists():
             try:
-                with open(self.auth_info_file, 'r') as f:
+                with open(self.auth_info_file, "r", encoding="utf-8") as f:
                     saved_info = json.load(f)
                     info.update(saved_info)
             except Exception:
                 pass
 
-        if info['state_exists']:
+        if info["state_exists"]:
             age_hours = (time.time() - self.state_file.stat().st_mtime) / 3600
-            info['state_age_hours'] = age_hours
+            info["state_age_hours"] = age_hours
 
         return info
 
@@ -104,10 +105,7 @@ class AuthManager:
             playwright = sync_playwright().start()
 
             # Launch using factory
-            context = BrowserFactory.launch_persistent_context(
-                playwright,
-                headless=headless
-            )
+            context = BrowserFactory.launch_persistent_context(playwright, headless=headless)
 
             # Navigate to NotebookLM
             page = context.new_page()
@@ -126,9 +124,11 @@ class AuthManager:
             try:
                 # Wait for URL to change to NotebookLM (regex ensures it's the actual domain, not a parameter)
                 timeout_ms = int(timeout_minutes * 60 * 1000)
-                page.wait_for_url(re.compile(r"^https://notebooklm\.google\.com/"), timeout=timeout_ms)
+                page.wait_for_url(
+                    re.compile(r"^https://notebooklm\.google\.com/"), timeout=timeout_ms
+                )
 
-                print(f"  ✅ Login successful!")
+                print("  ✅ Login successful!")
 
                 # Save authentication state
                 self._save_browser_state(context)
@@ -162,6 +162,7 @@ class AuthManager:
         try:
             # Save storage state (cookies, localStorage)
             context.storage_state(path=str(self.state_file))
+            harden_private_file(self.state_file)
             print(f"  💾 Saved browser state to: {self.state_file}")
         except Exception as e:
             print(f"  ❌ Failed to save browser state: {e}")
@@ -171,11 +172,10 @@ class AuthManager:
         """Save authentication metadata"""
         try:
             info = {
-                'authenticated_at': time.time(),
-                'authenticated_at_iso': time.strftime('%Y-%m-%d %H:%M:%S')
+                "authenticated_at": time.time(),
+                "authenticated_at_iso": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
-            with open(self.auth_info_file, 'w') as f:
-                json.dump(info, f, indent=2)
+            write_private_json(self.auth_info_file, info)
         except Exception:
             pass  # Non-critical
 
@@ -202,7 +202,7 @@ class AuthManager:
             # Clear entire browser state directory
             if self.browser_state_dir.exists():
                 shutil.rmtree(self.browser_state_dir)
-                self.browser_state_dir.mkdir(parents=True, exist_ok=True)
+                ensure_private_dir(self.browser_state_dir)
                 print("  ✅ Cleared browser data")
 
             return True
@@ -250,10 +250,7 @@ class AuthManager:
             playwright = sync_playwright().start()
 
             # Launch using factory
-            context = BrowserFactory.launch_persistent_context(
-                playwright,
-                headless=True
-            )
+            context = BrowserFactory.launch_persistent_context(playwright, headless=True)
 
             # Try to access NotebookLM
             page = context.new_page()
@@ -286,27 +283,31 @@ class AuthManager:
 
 def main():
     """Command-line interface for authentication management"""
-    parser = argparse.ArgumentParser(description='Manage NotebookLM authentication')
+    parser = argparse.ArgumentParser(description="Manage NotebookLM authentication")
 
-    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     # Setup command
-    setup_parser = subparsers.add_parser('setup', help='Setup authentication')
-    setup_parser.add_argument('--headless', action='store_true', help='Run in headless mode')
-    setup_parser.add_argument('--timeout', type=float, default=10, help='Login timeout in minutes (default: 10)')
+    setup_parser = subparsers.add_parser("setup", help="Setup authentication")
+    setup_parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+    setup_parser.add_argument(
+        "--timeout", type=float, default=10, help="Login timeout in minutes (default: 10)"
+    )
 
     # Status command
-    subparsers.add_parser('status', help='Check authentication status')
+    subparsers.add_parser("status", help="Check authentication status")
 
     # Validate command
-    subparsers.add_parser('validate', help='Validate authentication')
+    subparsers.add_parser("validate", help="Validate authentication")
 
     # Clear command
-    subparsers.add_parser('clear', help='Clear authentication')
+    subparsers.add_parser("clear", help="Clear authentication")
 
     # Re-auth command
-    reauth_parser = subparsers.add_parser('reauth', help='Re-authenticate (clear + setup)')
-    reauth_parser.add_argument('--timeout', type=float, default=10, help='Login timeout in minutes (default: 10)')
+    reauth_parser = subparsers.add_parser("reauth", help="Re-authenticate (clear + setup)")
+    reauth_parser.add_argument(
+        "--timeout", type=float, default=10, help="Login timeout in minutes (default: 10)"
+    )
 
     args = parser.parse_args()
 
@@ -314,7 +315,7 @@ def main():
     auth = AuthManager()
 
     # Execute command
-    if args.command == 'setup':
+    if args.command == "setup":
         if auth.setup_auth(headless=args.headless, timeout_minutes=args.timeout):
             print("\n✅ Authentication setup complete!")
             print("You can now use ask_question.py to query NotebookLM")
@@ -322,28 +323,28 @@ def main():
             print("\n❌ Authentication setup failed")
             exit(1)
 
-    elif args.command == 'status':
+    elif args.command == "status":
         info = auth.get_auth_info()
         print("\n🔐 Authentication Status:")
         print(f"  Authenticated: {'Yes' if info['authenticated'] else 'No'}")
-        if info.get('state_age_hours'):
+        if info.get("state_age_hours"):
             print(f"  State age: {info['state_age_hours']:.1f} hours")
-        if info.get('authenticated_at_iso'):
+        if info.get("authenticated_at_iso"):
             print(f"  Last auth: {info['authenticated_at_iso']}")
         print(f"  State file: {info['state_file']}")
 
-    elif args.command == 'validate':
+    elif args.command == "validate":
         if auth.validate_auth():
             print("Authentication is valid and working")
         else:
             print("Authentication is invalid or expired")
             print("Run: auth_manager.py setup")
 
-    elif args.command == 'clear':
+    elif args.command == "clear":
         if auth.clear_auth():
             print("Authentication cleared")
 
-    elif args.command == 'reauth':
+    elif args.command == "reauth":
         if auth.re_auth(timeout_minutes=args.timeout):
             print("\n✅ Re-authentication complete!")
         else:

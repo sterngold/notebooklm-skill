@@ -1,0 +1,24 @@
+[project]
+name = "notebooklm-skill"
+version = "0.1.0"
+description = "Claude Code skill for source-grounded NotebookLM research from uploaded documents"
+requires-python = ">=3.10"
+dependencies = [
+  "patchright==1.55.2",
+  "python-dotenv==1.2.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4.0",
+  "ruff==0.6.9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["scripts"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
