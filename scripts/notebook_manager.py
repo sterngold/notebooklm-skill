@@ -7,11 +7,11 @@ Based on the MCP server implementation
 
 import json
 import argparse
-import uuid
-import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+
+from secure_storage import ensure_private_dir, write_private_json
 
 
 class NotebookLibrary:
@@ -22,7 +22,7 @@ class NotebookLibrary:
         # Store data within the skill directory
         skill_dir = Path(__file__).parent.parent
         self.data_dir = skill_dir / "data"
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        ensure_private_dir(self.data_dir)
 
         self.library_file = self.data_dir / "library.json"
         self.notebooks: Dict[str, Dict[str, Any]] = {}
@@ -35,10 +35,10 @@ class NotebookLibrary:
         """Load library from disk"""
         if self.library_file.exists():
             try:
-                with open(self.library_file, 'r') as f:
+                with open(self.library_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.notebooks = data.get('notebooks', {})
-                    self.active_notebook_id = data.get('active_notebook_id')
+                    self.notebooks = data.get("notebooks", {})
+                    self.active_notebook_id = data.get("active_notebook_id")
                     print(f"📚 Loaded library with {len(self.notebooks)} notebooks")
             except Exception as e:
                 print(f"⚠️ Error loading library: {e}")
@@ -51,12 +51,11 @@ class NotebookLibrary:
         """Save library to disk"""
         try:
             data = {
-                'notebooks': self.notebooks,
-                'active_notebook_id': self.active_notebook_id,
-                'updated_at': datetime.now().isoformat()
+                "notebooks": self.notebooks,
+                "active_notebook_id": self.active_notebook_id,
+                "updated_at": datetime.now().isoformat(),
             }
-            with open(self.library_file, 'w') as f:
-                json.dump(data, f, indent=2)
+            write_private_json(self.library_file, data)
         except Exception as e:
             print(f"❌ Error saving library: {e}")
 
@@ -68,7 +67,7 @@ class NotebookLibrary:
         topics: List[str],
         content_types: Optional[List[str]] = None,
         use_cases: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Add a new notebook to the library
@@ -86,7 +85,7 @@ class NotebookLibrary:
             The created notebook object
         """
         # Generate ID from name
-        notebook_id = name.lower().replace(' ', '-').replace('_', '-')
+        notebook_id = name.lower().replace(" ", "-").replace("_", "-")
 
         # Check for duplicates
         if notebook_id in self.notebooks:
@@ -94,18 +93,18 @@ class NotebookLibrary:
 
         # Create notebook object
         notebook = {
-            'id': notebook_id,
-            'url': url,
-            'name': name,
-            'description': description,
-            'topics': topics,
-            'content_types': content_types or [],
-            'use_cases': use_cases or [],
-            'tags': tags or [],
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat(),
-            'use_count': 0,
-            'last_used': None
+            "id": notebook_id,
+            "url": url,
+            "name": name,
+            "description": description,
+            "topics": topics,
+            "content_types": content_types or [],
+            "use_cases": use_cases or [],
+            "tags": tags or [],
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "use_count": 0,
+            "last_used": None,
         }
 
         # Add to library
@@ -156,7 +155,7 @@ class NotebookLibrary:
         content_types: Optional[List[str]] = None,
         use_cases: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
-        url: Optional[str] = None
+        url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Update notebook metadata
@@ -175,21 +174,21 @@ class NotebookLibrary:
 
         # Update fields if provided
         if name is not None:
-            notebook['name'] = name
+            notebook["name"] = name
         if description is not None:
-            notebook['description'] = description
+            notebook["description"] = description
         if topics is not None:
-            notebook['topics'] = topics
+            notebook["topics"] = topics
         if content_types is not None:
-            notebook['content_types'] = content_types
+            notebook["content_types"] = content_types
         if use_cases is not None:
-            notebook['use_cases'] = use_cases
+            notebook["use_cases"] = use_cases
         if tags is not None:
-            notebook['tags'] = tags
+            notebook["tags"] = tags
         if url is not None:
-            notebook['url'] = url
+            notebook["url"] = url
 
-        notebook['updated_at'] = datetime.now().isoformat()
+        notebook["updated_at"] = datetime.now().isoformat()
 
         self._save_library()
         print(f"✅ Updated notebook: {notebook['name']}")
@@ -219,11 +218,11 @@ class NotebookLibrary:
         for notebook in self.notebooks.values():
             # Search in various fields
             searchable = [
-                notebook['name'].lower(),
-                notebook['description'].lower(),
-                ' '.join(notebook['topics']).lower(),
-                ' '.join(notebook['tags']).lower(),
-                ' '.join(notebook.get('use_cases', [])).lower()
+                notebook["name"].lower(),
+                notebook["description"].lower(),
+                " ".join(notebook["topics"]).lower(),
+                " ".join(notebook["tags"]).lower(),
+                " ".join(notebook.get("use_cases", [])).lower(),
             ]
 
             if any(query_lower in field for field in searchable):
@@ -271,8 +270,8 @@ class NotebookLibrary:
             raise ValueError(f"Notebook not found: {notebook_id}")
 
         notebook = self.notebooks[notebook_id]
-        notebook['use_count'] += 1
-        notebook['last_used'] = datetime.now().isoformat()
+        notebook["use_count"] += 1
+        notebook["last_used"] = datetime.now().isoformat()
 
         self._save_library()
         return notebook
@@ -284,59 +283,56 @@ class NotebookLibrary:
         total_use_count = 0
 
         for notebook in self.notebooks.values():
-            total_topics.update(notebook['topics'])
-            total_use_count += notebook['use_count']
+            total_topics.update(notebook["topics"])
+            total_use_count += notebook["use_count"]
 
         # Find most used
         most_used = None
         if self.notebooks:
-            most_used = max(
-                self.notebooks.values(),
-                key=lambda n: n['use_count']
-            )
+            most_used = max(self.notebooks.values(), key=lambda n: n["use_count"])
 
         return {
-            'total_notebooks': total_notebooks,
-            'total_topics': len(total_topics),
-            'total_use_count': total_use_count,
-            'active_notebook': self.get_active_notebook(),
-            'most_used_notebook': most_used,
-            'library_path': str(self.library_file)
+            "total_notebooks": total_notebooks,
+            "total_topics": len(total_topics),
+            "total_use_count": total_use_count,
+            "active_notebook": self.get_active_notebook(),
+            "most_used_notebook": most_used,
+            "library_path": str(self.library_file),
         }
 
 
 def main():
     """Command-line interface for notebook management"""
-    parser = argparse.ArgumentParser(description='Manage NotebookLM library')
+    parser = argparse.ArgumentParser(description="Manage NotebookLM library")
 
-    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     # Add command
-    add_parser = subparsers.add_parser('add', help='Add a notebook')
-    add_parser.add_argument('--url', required=True, help='NotebookLM URL')
-    add_parser.add_argument('--name', required=True, help='Display name')
-    add_parser.add_argument('--description', required=True, help='Description')
-    add_parser.add_argument('--topics', required=True, help='Comma-separated topics')
-    add_parser.add_argument('--use-cases', help='Comma-separated use cases')
-    add_parser.add_argument('--tags', help='Comma-separated tags')
+    add_parser = subparsers.add_parser("add", help="Add a notebook")
+    add_parser.add_argument("--url", required=True, help="NotebookLM URL")
+    add_parser.add_argument("--name", required=True, help="Display name")
+    add_parser.add_argument("--description", required=True, help="Description")
+    add_parser.add_argument("--topics", required=True, help="Comma-separated topics")
+    add_parser.add_argument("--use-cases", help="Comma-separated use cases")
+    add_parser.add_argument("--tags", help="Comma-separated tags")
 
     # List command
-    subparsers.add_parser('list', help='List all notebooks')
+    subparsers.add_parser("list", help="List all notebooks")
 
     # Search command
-    search_parser = subparsers.add_parser('search', help='Search notebooks')
-    search_parser.add_argument('--query', required=True, help='Search query')
+    search_parser = subparsers.add_parser("search", help="Search notebooks")
+    search_parser.add_argument("--query", required=True, help="Search query")
 
     # Activate command
-    activate_parser = subparsers.add_parser('activate', help='Set active notebook')
-    activate_parser.add_argument('--id', required=True, help='Notebook ID')
+    activate_parser = subparsers.add_parser("activate", help="Set active notebook")
+    activate_parser.add_argument("--id", required=True, help="Notebook ID")
 
     # Remove command
-    remove_parser = subparsers.add_parser('remove', help='Remove a notebook')
-    remove_parser.add_argument('--id', required=True, help='Notebook ID')
+    remove_parser = subparsers.add_parser("remove", help="Remove a notebook")
+    remove_parser.add_argument("--id", required=True, help="Notebook ID")
 
     # Stats command
-    subparsers.add_parser('stats', help='Show library statistics')
+    subparsers.add_parser("stats", help="Show library statistics")
 
     args = parser.parse_args()
 
@@ -344,10 +340,10 @@ def main():
     library = NotebookLibrary()
 
     # Execute command
-    if args.command == 'add':
-        topics = [t.strip() for t in args.topics.split(',')]
-        use_cases = [u.strip() for u in args.use_cases.split(',')] if args.use_cases else None
-        tags = [t.strip() for t in args.tags.split(',')] if args.tags else None
+    if args.command == "add":
+        topics = [t.strip() for t in args.topics.split(",")]
+        use_cases = [u.strip() for u in args.use_cases.split(",")] if args.use_cases else None
+        tags = [t.strip() for t in args.tags.split(",")] if args.tags else None
 
         notebook = library.add_notebook(
             url=args.url,
@@ -355,16 +351,16 @@ def main():
             description=args.description,
             topics=topics,
             use_cases=use_cases,
-            tags=tags
+            tags=tags,
         )
         print(json.dumps(notebook, indent=2))
 
-    elif args.command == 'list':
+    elif args.command == "list":
         notebooks = library.list_notebooks()
         if notebooks:
             print("\n📚 Notebook Library:")
             for notebook in notebooks:
-                active = " [ACTIVE]" if notebook['id'] == library.active_notebook_id else ""
+                active = " [ACTIVE]" if notebook["id"] == library.active_notebook_id else ""
                 print(f"\n  📓 {notebook['name']}{active}")
                 print(f"     ID: {notebook['id']}")
                 print(f"     Topics: {', '.join(notebook['topics'])}")
@@ -372,7 +368,7 @@ def main():
         else:
             print("📚 Library is empty. Add notebooks with: notebook_manager.py add")
 
-    elif args.command == 'search':
+    elif args.command == "search":
         results = library.search_notebooks(args.query)
         if results:
             print(f"\n🔍 Found {len(results)} notebooks:")
@@ -382,24 +378,26 @@ def main():
         else:
             print(f"🔍 No notebooks found for: {args.query}")
 
-    elif args.command == 'activate':
+    elif args.command == "activate":
         notebook = library.select_notebook(args.id)
         print(f"Now using: {notebook['name']}")
 
-    elif args.command == 'remove':
+    elif args.command == "remove":
         if library.remove_notebook(args.id):
             print("Notebook removed from library")
 
-    elif args.command == 'stats':
+    elif args.command == "stats":
         stats = library.get_stats()
         print("\n📊 Library Statistics:")
         print(f"  Total notebooks: {stats['total_notebooks']}")
         print(f"  Total topics: {stats['total_topics']}")
         print(f"  Total uses: {stats['total_use_count']}")
-        if stats['active_notebook']:
+        if stats["active_notebook"]:
             print(f"  Active: {stats['active_notebook']['name']}")
-        if stats['most_used_notebook']:
-            print(f"  Most used: {stats['most_used_notebook']['name']} ({stats['most_used_notebook']['use_count']} uses)")
+        if stats["most_used_notebook"]:
+            print(
+                f"  Most used: {stats['most_used_notebook']['name']} ({stats['most_used_notebook']['use_count']} uses)"
+            )
         print(f"  Library path: {stats['library_path']}")
 
     else:
