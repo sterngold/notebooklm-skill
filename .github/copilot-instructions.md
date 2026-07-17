@@ -25,8 +25,9 @@ check is `ci`; it must pass before merge.
 
 ## Working rules
 
-- Work on a new task-named branch in an isolated checkout or worktree. Never
-  push code directly to `main`.
+- Work in an isolated task checkout: use a new worktree for local app work or
+  the provider's isolated sandbox for cloud work. Use a task-named branch and
+  never push code directly to `main`.
 - Keep changes narrow and update `scripts/` and `SKILL.md` together whenever the
   behavior contract changes. Stage only reviewed paths, use Conventional
   Commits, and do not bypass hooks.
@@ -40,7 +41,9 @@ check is `ci`; it must pass before merge.
   Stop when required live validation or local-only shared-canon context is
   unavailable; do not invent results.
 - Before merge, wait for CI and resolve every review thread. Copilot review is
-  advisory; it does not replace CI or human merge approval.
+  a required workflow gate in this repository but remains advisory in GitHub's
+  approval model; it does not replace CI or the repository owner's merge
+  decision. No separate human reviewer approval is required by `AGENTS.md`.
 
 ## Review priorities
 
