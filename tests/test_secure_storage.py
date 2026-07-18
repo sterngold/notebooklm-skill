@@ -17,7 +17,8 @@ def mode(path: Path) -> int:
 
 
 def temp_files(parent: Path, name: str) -> list[Path]:
-    return list(parent.glob(f".{name}.*.tmp"))
+    candidates = {parent / f".{name}.tmp", *parent.glob(f".{name}.*.tmp")}
+    return sorted(path for path in candidates if path.exists())
 
 
 @unittest.skipIf(os.name == "nt", "POSIX file mode checks do not apply on Windows")
