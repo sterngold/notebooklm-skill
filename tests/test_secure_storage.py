@@ -21,8 +21,8 @@ def temp_files(parent: Path, name: str) -> list[Path]:
     return sorted(path for path in candidates if path.exists())
 
 
-@unittest.skipIf(os.name == "nt", "POSIX file mode checks do not apply on Windows")
 class SecureStorageTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX file mode checks do not apply on Windows")
     def test_ensure_private_dir_creates_directory_with_owner_only_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
@@ -32,6 +32,7 @@ class SecureStorageTests(unittest.TestCase):
             self.assertTrue(data_dir.is_dir())
             self.assertEqual(mode(data_dir), 0o700)
 
+    @unittest.skipIf(os.name == "nt", "POSIX file mode checks do not apply on Windows")
     def test_write_private_json_creates_owner_only_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             state_file = Path(tmp) / "browser_state" / "state.json"
@@ -97,6 +98,128 @@ class SecureStorageTests(unittest.TestCase):
             self.assertEqual(len(set(sources)), 2)
             self.assertEqual(json.loads(path.read_text()), {"value": 2})
 
+    def test_unlink_is_attempted_after_descriptor_close_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+            descriptors = []
+            unlink_calls = []
+            real_mkstemp = tempfile.mkstemp
+            real_close = os.close
+            real_unlink = Path.unlink
+
+            def capture_mkstemp(*args, **kwargs):
+                descriptor, tmp_path = real_mkstemp(*args, **kwargs)
+                descriptors.append(descriptor)
+                return descriptor, tmp_path
+
+            def close_then_fail(descriptor):
+                real_close(descriptor)
+                raise OSError("close failed")
+
+            def record_unlink(tmp_path, *, missing_ok=False):
+                unlink_calls.append(tmp_path)
+                return real_unlink(tmp_path, missing_ok=missing_ok)
+
+            with patch("secure_storage.tempfile.mkstemp", side_effect=capture_mkstemp):
+                with patch("secure_storage.os.fdopen", side_effect=OSError("open failed")):
+                    with patch("secure_storage.os.close", side_effect=close_then_fail):
+                        with patch.object(Path, "unlink", autospec=True, side_effect=record_unlink):
+                            with self.assertRaises(OSError):
+                                write_private_json(path, {"new": True})
+
+            self.assertEqual(len(unlink_calls), 1)
+            with self.assertRaises(OSError):
+                os.fstat(descriptors[0])
+            self.assertEqual(temp_files(path.parent, path.name), [])
+
+    def test_primary_error_stays_top_level_when_close_and_unlink_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+            descriptors = []
+            real_mkstemp = tempfile.mkstemp
+            real_close = os.close
+            real_unlink = Path.unlink
+            primary_error = OSError("open failed")
+            close_error = OSError("close failed")
+            unlink_error = OSError("unlink failed")
+
+            def capture_mkstemp(*args, **kwargs):
+                descriptor, tmp_path = real_mkstemp(*args, **kwargs)
+                descriptors.append(descriptor)
+                return descriptor, tmp_path
+
+            def close_then_fail(descriptor):
+                real_close(descriptor)
+                raise close_error
+
+            def unlink_then_fail(tmp_path, *, missing_ok=False):
+                real_unlink(tmp_path, missing_ok=missing_ok)
+                raise unlink_error
+
+            with patch("secure_storage.tempfile.mkstemp", side_effect=capture_mkstemp):
+                with patch("secure_storage.os.fdopen", side_effect=primary_error):
+                    with patch("secure_storage.os.close", side_effect=close_then_fail):
+                        with patch.object(
+                            Path, "unlink", autospec=True, side_effect=unlink_then_fail
+                        ):
+                            with self.assertRaises(OSError) as raised:
+                                write_private_json(path, {"new": True})
+
+            self.assertIs(raised.exception, primary_error)
+            self.assertIs(raised.exception.__cause__, unlink_error)
+            self.assertIs(unlink_error.__cause__, close_error)
+            with self.assertRaises(OSError):
+                os.fstat(descriptors[0])
+            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            self.assertEqual(temp_files(path.parent, path.name), [])
+
+    def test_serialization_error_stays_top_level_when_unlink_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+            descriptors = []
+            real_mkstemp = tempfile.mkstemp
+            real_unlink = Path.unlink
+            primary_error = TypeError("serialization failed")
+            unlink_error = OSError("unlink failed")
+
+            def capture_mkstemp(*args, **kwargs):
+                descriptor, tmp_path = real_mkstemp(*args, **kwargs)
+                descriptors.append(descriptor)
+                return descriptor, tmp_path
+
+            def unlink_then_fail(tmp_path, *, missing_ok=False):
+                real_unlink(tmp_path, missing_ok=missing_ok)
+                raise unlink_error
+
+            with patch("secure_storage.tempfile.mkstemp", side_effect=capture_mkstemp):
+                with patch("secure_storage.json.dump", side_effect=primary_error):
+                    with patch.object(Path, "unlink", autospec=True, side_effect=unlink_then_fail):
+                        with self.assertRaises(TypeError) as raised:
+                            write_private_json(path, {"new": True})
+
+            self.assertIs(raised.exception, primary_error)
+            self.assertIs(raised.exception.__cause__, unlink_error)
+            with self.assertRaises(OSError):
+                os.fstat(descriptors[0])
+            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            self.assertEqual(temp_files(path.parent, path.name), [])
+
+    def test_cleanup_only_unlink_error_surfaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            cleanup_error = OSError("unlink failed")
+
+            with patch.object(Path, "unlink", autospec=True, side_effect=cleanup_error):
+                with self.assertRaises(OSError) as raised:
+                    write_private_json(path, {"new": True})
+
+            self.assertIs(raised.exception, cleanup_error)
+            self.assertEqual(json.loads(path.read_text()), {"new": True})
+
+    @unittest.skipIf(os.name == "nt", "os.fchmod is unavailable on Windows")
     def test_fchmod_failure_preserves_destination_and_cleans_temp(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
@@ -181,6 +304,7 @@ class SecureStorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), {"old": True})
             self.assertEqual(temp_files(path.parent, path.name), [])
 
+    @unittest.skipIf(os.name == "nt", "POSIX file mode checks do not apply on Windows")
     def test_harden_private_file_tightens_existing_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             state_file = Path(tmp) / "state.json"

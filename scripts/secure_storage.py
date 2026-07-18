@@ -51,6 +51,8 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
     )
     tmp_path = Path(raw_tmp_path)
 
+    operation_error = None
+    operation_traceback = None
     try:
         if os.name != "nt":
             os.fchmod(fd, PRIVATE_FILE_MODE)
@@ -63,7 +65,32 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
 
         os.replace(tmp_path, path)
         harden_private_file(path)
-    finally:
-        if fd >= 0:
+    except BaseException as error:
+        operation_error = error
+        operation_traceback = error.__traceback__
+
+    # Cleanup steps are independent: a failed close must not prevent unlink.
+    cleanup_error = None
+    if fd >= 0:
+        try:
             os.close(fd)
+        except BaseException as error:
+            cleanup_error = error
+
+    try:
         tmp_path.unlink(missing_ok=True)
+    except BaseException as error:
+        if cleanup_error is not None:
+            error.__cause__ = cleanup_error
+            error.__suppress_context__ = True
+        cleanup_error = error
+
+    if operation_error is not None:
+        if cleanup_error is not None:
+            # Preserve the operation failure as top-level while retaining every
+            # cleanup failure in its explicit cause chain.
+            raise operation_error.with_traceback(operation_traceback) from cleanup_error
+        raise operation_error.with_traceback(operation_traceback)
+
+    if cleanup_error is not None:
+        raise cleanup_error
