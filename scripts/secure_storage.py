@@ -55,7 +55,12 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
     operation_traceback = None
     try:
         if os.name != "nt":
-            os.fchmod(fd, PRIVATE_FILE_MODE)
+            try:
+                os.fchmod(fd, PRIVATE_FILE_MODE)
+            except OSError:
+                # mkstemp creates an owner-only file on POSIX; fchmod is
+                # additional best-effort hardening for supporting filesystems.
+                pass
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             fd = -1
             json.dump(data, handle, indent=2)
@@ -71,19 +76,22 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
 
     # Cleanup steps are independent: a failed close must not prevent unlink.
     cleanup_error = None
+    cleanup_traceback = None
     if fd >= 0:
         try:
             os.close(fd)
         except BaseException as error:
             cleanup_error = error
+            cleanup_traceback = error.__traceback__
 
     try:
         tmp_path.unlink(missing_ok=True)
     except BaseException as error:
         if cleanup_error is not None:
-            error.__cause__ = cleanup_error
+            error.__cause__ = cleanup_error.with_traceback(cleanup_traceback)
             error.__suppress_context__ = True
         cleanup_error = error
+        cleanup_traceback = error.__traceback__
 
     if operation_error is not None:
         if cleanup_error is not None:
@@ -93,4 +101,4 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
         raise operation_error.with_traceback(operation_traceback)
 
     if cleanup_error is not None:
-        raise cleanup_error
+        raise cleanup_error.with_traceback(cleanup_traceback)

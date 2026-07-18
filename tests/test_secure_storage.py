@@ -21,6 +21,15 @@ def temp_files(parent: Path, name: str) -> list[Path]:
     return sorted(path for path in candidates if path.exists())
 
 
+def traceback_functions(error: BaseException) -> list[str]:
+    functions = []
+    current = error.__traceback__
+    while current is not None:
+        functions.append(current.tb_frame.f_code.co_name)
+        current = current.tb_next
+    return functions
+
+
 class SecureStorageTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX file mode checks do not apply on Windows")
     def test_ensure_private_dir_creates_directory_with_owner_only_permissions(self):
@@ -156,6 +165,9 @@ class SecureStorageTests(unittest.TestCase):
 
             def unlink_then_fail(tmp_path, *, missing_ok=False):
                 real_unlink(tmp_path, missing_ok=missing_ok)
+                # Cleanup continues after close fails; preserve the traceback
+                # captured at the close site even if the exception is touched.
+                close_error.__traceback__ = None
                 raise unlink_error
 
             with patch("secure_storage.tempfile.mkstemp", side_effect=capture_mkstemp):
@@ -164,12 +176,20 @@ class SecureStorageTests(unittest.TestCase):
                         with patch.object(
                             Path, "unlink", autospec=True, side_effect=unlink_then_fail
                         ):
-                            with self.assertRaises(OSError) as raised:
+                            try:
                                 write_private_json(path, {"new": True})
+                            except OSError as raised_error:
+                                caught_error = raised_error
+                                unlink_traceback = traceback_functions(unlink_error)
+                                close_traceback = traceback_functions(close_error)
+                            else:
+                                self.fail("write_private_json did not raise")
 
-            self.assertIs(raised.exception, primary_error)
-            self.assertIs(raised.exception.__cause__, unlink_error)
+            self.assertIs(caught_error, primary_error)
+            self.assertIs(caught_error.__cause__, unlink_error)
             self.assertIs(unlink_error.__cause__, close_error)
+            self.assertEqual(unlink_traceback[-1], "unlink_then_fail")
+            self.assertEqual(close_traceback[-1], "close_then_fail")
             with self.assertRaises(OSError):
                 os.fstat(descriptors[0])
             self.assertEqual(json.loads(path.read_text()), {"old": True})
@@ -212,24 +232,43 @@ class SecureStorageTests(unittest.TestCase):
             path = Path(tmp) / "state.json"
             cleanup_error = OSError("unlink failed")
 
-            with patch.object(Path, "unlink", autospec=True, side_effect=cleanup_error):
-                with self.assertRaises(OSError) as raised:
-                    write_private_json(path, {"new": True})
+            def unlink_then_fail(*_args, **_kwargs):
+                raise cleanup_error
 
-            self.assertIs(raised.exception, cleanup_error)
+            with patch.object(Path, "unlink", autospec=True, side_effect=unlink_then_fail):
+                try:
+                    write_private_json(path, {"new": True})
+                except OSError as raised_error:
+                    caught_error = raised_error
+                    cleanup_traceback = traceback_functions(cleanup_error)
+                else:
+                    self.fail("write_private_json did not raise")
+
+            self.assertIs(caught_error, cleanup_error)
+            self.assertEqual(cleanup_traceback[-1], "unlink_then_fail")
             self.assertEqual(json.loads(path.read_text()), {"new": True})
 
     @unittest.skipIf(os.name == "nt", "os.fchmod is unavailable on Windows")
-    def test_fchmod_failure_preserves_destination_and_cleans_temp(self):
+    def test_fchmod_failure_still_persists_owner_only_json_and_cleans_temp(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
             path.write_text('{"old": true}\n')
+            temp_modes = []
+            real_replace = os.replace
+
+            def capture_replace(source, destination):
+                temp_modes.append(mode(Path(source)))
+                real_replace(source, destination)
 
             with patch("secure_storage.os.fchmod", side_effect=OSError("chmod failed")):
-                with self.assertRaisesRegex(OSError, "chmod failed"):
+                with patch("secure_storage.os.replace", side_effect=capture_replace):
                     write_private_json(path, {"new": True})
 
-            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            # mkstemp itself supplies the non-permissive baseline; fchmod is an
+            # additional best-effort hardening step for supporting filesystems.
+            self.assertEqual(temp_modes, [0o600])
+            self.assertEqual(mode(path), 0o600)
+            self.assertEqual(json.loads(path.read_text()), {"new": True})
             self.assertEqual(temp_files(path.parent, path.name), [])
 
     def test_fdopen_failure_closes_descriptor_preserves_destination_and_cleans_temp(self):
