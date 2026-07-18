@@ -53,6 +53,8 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
 
     operation_error = None
     operation_traceback = None
+    close_error = None
+    close_traceback = None
     try:
         if os.name != "nt":
             try:
@@ -61,28 +63,52 @@ def write_private_json(path: Path, data: dict[str, Any]) -> None:
                 # mkstemp creates an owner-only file on POSIX; fchmod is
                 # additional best-effort hardening for supporting filesystems.
                 pass
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = -1
+        # Retain ownership of the raw descriptor so a handle.close() failure
+        # cannot leak it or force us to guess whether the handle already closed
+        # it. The descriptor is closed exactly once below before replacement.
+        handle = os.fdopen(fd, "w", encoding="utf-8", closefd=False)
+        try:
             json.dump(data, handle, indent=2)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-
-        os.replace(tmp_path, path)
-        harden_private_file(path)
-    except BaseException as error:
-        operation_error = error
-        operation_traceback = error.__traceback__
-
-    # Cleanup steps are independent: a failed close must not prevent unlink.
-    cleanup_error = None
-    cleanup_traceback = None
-    if fd >= 0:
-        try:
-            os.close(fd)
         except BaseException as error:
+            operation_error = error
+            operation_traceback = error.__traceback__
+
+        try:
+            handle.close()
+        except BaseException as error:
+            close_error = error
+            close_traceback = error.__traceback__
+    except BaseException as error:
+        if operation_error is None:
+            operation_error = error
+            operation_traceback = error.__traceback__
+
+    # Cleanup steps are independent: a failed handle close must not prevent
+    # descriptor close, and neither close failure may prevent unlink.
+    cleanup_error = close_error
+    cleanup_traceback = close_traceback
+    if fd >= 0:
+        descriptor = fd
+        fd = -1
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            if cleanup_error is not None:
+                error.__cause__ = cleanup_error.with_traceback(cleanup_traceback)
+                error.__suppress_context__ = True
             cleanup_error = error
             cleanup_traceback = error.__traceback__
+
+    if operation_error is None and cleanup_error is None:
+        try:
+            os.replace(tmp_path, path)
+            harden_private_file(path)
+        except BaseException as error:
+            operation_error = error
+            operation_traceback = error.__traceback__
 
     try:
         tmp_path.unlink(missing_ok=True)

@@ -227,6 +227,112 @@ class SecureStorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), {"old": True})
             self.assertEqual(temp_files(path.parent, path.name), [])
 
+    def test_serialization_error_stays_top_level_for_handle_close_failures(self):
+        class CloseFailingHandle:
+            def __init__(self, handle, close_error, *, close_first):
+                self.handle = handle
+                self.close_error = close_error
+                self.close_first = close_first
+
+            def __enter__(self):
+                self.handle.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                if self.close_first:
+                    self.handle.__exit__(*args)
+                raise self.close_error
+
+            def close(self):
+                if self.close_first:
+                    self.handle.close()
+                raise self.close_error
+
+            def write(self, data):
+                return self.handle.write(data)
+
+            def flush(self):
+                return self.handle.flush()
+
+            def fileno(self):
+                return self.handle.fileno()
+
+        for close_first in (False, True):
+            with self.subTest(close_first=close_first):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "state.json"
+                    path.write_text('{"old": true}\n')
+                    descriptors = []
+                    opened_handles = []
+                    real_mkstemp = tempfile.mkstemp
+                    real_fdopen = os.fdopen
+                    real_close = os.close
+                    close_calls = []
+                    primary_error = TypeError("serialization failed")
+                    close_error = OSError("close failed")
+
+                    def capture_mkstemp(*args, **kwargs):
+                        descriptor, tmp_path = real_mkstemp(*args, **kwargs)
+                        descriptors.append(descriptor)
+                        return descriptor, tmp_path
+
+                    def close_failing_fdopen(*args, **kwargs):
+                        wrapped = CloseFailingHandle(
+                            real_fdopen(*args, **kwargs),
+                            close_error,
+                            close_first=close_first,
+                        )
+                        opened_handles.append(wrapped)
+                        return wrapped
+
+                    def fail_serialization(*_args, **_kwargs):
+                        raise primary_error
+
+                    def record_close(descriptor):
+                        close_calls.append(descriptor)
+                        real_close(descriptor)
+
+                    try:
+                        with patch("secure_storage.tempfile.mkstemp", side_effect=capture_mkstemp):
+                            with patch(
+                                "secure_storage.os.fdopen",
+                                side_effect=close_failing_fdopen,
+                            ):
+                                with patch("secure_storage.os.close", side_effect=record_close):
+                                    with patch(
+                                        "secure_storage.json.dump",
+                                        side_effect=fail_serialization,
+                                    ):
+                                        try:
+                                            write_private_json(path, {"new": True})
+                                        except TypeError as raised_error:
+                                            caught_error = raised_error
+                                            primary_traceback = traceback_functions(primary_error)
+                                            close_traceback = traceback_functions(close_error)
+                                        else:
+                                            self.fail("write_private_json did not raise")
+
+                        self.assertIs(caught_error, primary_error)
+                        self.assertIs(caught_error.__cause__, close_error)
+                        self.assertEqual(primary_traceback[-1], "fail_serialization")
+                        self.assertEqual(close_traceback[-1], "close")
+                        self.assertEqual(close_calls, descriptors)
+                        with self.assertRaises(OSError):
+                            os.fstat(descriptors[0])
+                        self.assertEqual(json.loads(path.read_text()), {"old": True})
+                        self.assertEqual(temp_files(path.parent, path.name), [])
+                    finally:
+                        for opened_handle in opened_handles:
+                            try:
+                                opened_handle.handle.close()
+                            except OSError:
+                                pass
+                        for descriptor in descriptors:
+                            try:
+                                real_close(descriptor)
+                            except OSError:
+                                pass
+
     def test_cleanup_only_unlink_error_surfaces(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
@@ -304,6 +410,9 @@ class SecureStorageTests(unittest.TestCase):
 
             def __exit__(self, *args):
                 return self.handle.__exit__(*args)
+
+            def close(self):
+                return self.handle.close()
 
             def write(self, data):
                 return self.handle.write(data)
