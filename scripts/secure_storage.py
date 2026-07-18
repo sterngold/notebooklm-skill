@@ -7,6 +7,7 @@ readable only by the current OS user whenever the platform supports chmod.
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -40,14 +41,29 @@ def harden_private_file(path: Path) -> Path:
 
 
 def write_private_json(path: Path, data: dict[str, Any]) -> None:
-    """Write JSON atomically-ish with owner-only file permissions."""
+    """Atomically replace JSON using an owner-only same-directory temp file."""
     ensure_private_dir(path.parent)
-    tmp_path = path.with_name(f".{path.name}.tmp")
+    fd, raw_tmp_path = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        text=True,
+    )
+    tmp_path = Path(raw_tmp_path)
 
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
+    try:
+        if os.name != "nt":
+            os.fchmod(fd, PRIVATE_FILE_MODE)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            json.dump(data, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
 
-    _chmod(tmp_path, PRIVATE_FILE_MODE)
-    tmp_path.replace(path)
-    harden_private_file(path)
+        os.replace(tmp_path, path)
+        harden_private_file(path)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        tmp_path.unlink(missing_ok=True)
