@@ -65,6 +65,21 @@ class SecureStorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), {"old": True})
             self.assertEqual(temp_files(path.parent, path.name), [])
 
+    def test_replace_uses_a_temp_file_in_the_destination_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            sources = []
+            real_replace = os.replace
+
+            def capture_replace(source, destination):
+                sources.append(Path(source))
+                real_replace(source, destination)
+
+            with patch("secure_storage.os.replace", side_effect=capture_replace):
+                write_private_json(path, {"value": 1})
+
+            self.assertEqual(sources[0].parent, path.parent)
+
     def test_sequential_writes_use_distinct_temp_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
@@ -81,6 +96,90 @@ class SecureStorageTests(unittest.TestCase):
 
             self.assertEqual(len(set(sources)), 2)
             self.assertEqual(json.loads(path.read_text()), {"value": 2})
+
+    def test_fchmod_failure_preserves_destination_and_cleans_temp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+
+            with patch("secure_storage.os.fchmod", side_effect=OSError("chmod failed")):
+                with self.assertRaisesRegex(OSError, "chmod failed"):
+                    write_private_json(path, {"new": True})
+
+            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            self.assertEqual(temp_files(path.parent, path.name), [])
+
+    def test_fdopen_failure_closes_descriptor_preserves_destination_and_cleans_temp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+            descriptors = []
+            real_mkstemp = tempfile.mkstemp
+
+            def capture_mkstemp(*args, **kwargs):
+                descriptor, tmp_path = real_mkstemp(*args, **kwargs)
+                descriptors.append(descriptor)
+                return descriptor, tmp_path
+
+            with patch("secure_storage.tempfile.mkstemp", side_effect=capture_mkstemp):
+                with patch("secure_storage.os.fdopen", side_effect=OSError("open failed")):
+                    with self.assertRaisesRegex(OSError, "open failed"):
+                        write_private_json(path, {"new": True})
+
+            with self.assertRaises(OSError):
+                os.fstat(descriptors[0])
+            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            self.assertEqual(temp_files(path.parent, path.name), [])
+
+    def test_flush_failure_preserves_destination_and_cleans_temp(self):
+        class FlushFailingHandle:
+            def __init__(self, handle):
+                self.handle = handle
+
+            def __enter__(self):
+                self.handle.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.handle.__exit__(*args)
+
+            def write(self, data):
+                return self.handle.write(data)
+
+            def flush(self):
+                raise OSError("flush failed")
+
+            def fileno(self):
+                return self.handle.fileno()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+            real_fdopen = os.fdopen
+
+            with patch(
+                "secure_storage.os.fdopen",
+                side_effect=lambda *args, **kwargs: FlushFailingHandle(
+                    real_fdopen(*args, **kwargs)
+                ),
+            ):
+                with self.assertRaisesRegex(OSError, "flush failed"):
+                    write_private_json(path, {"new": True})
+
+            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            self.assertEqual(temp_files(path.parent, path.name), [])
+
+    def test_fsync_failure_preserves_destination_and_cleans_temp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"old": true}\n')
+
+            with patch("secure_storage.os.fsync", side_effect=OSError("fsync failed")):
+                with self.assertRaisesRegex(OSError, "fsync failed"):
+                    write_private_json(path, {"new": True})
+
+            self.assertEqual(json.loads(path.read_text()), {"old": True})
+            self.assertEqual(temp_files(path.parent, path.name), [])
 
     def test_harden_private_file_tightens_existing_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
