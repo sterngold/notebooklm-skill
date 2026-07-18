@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import BROWSER_STATE_DIR, STATE_FILE, AUTH_INFO_FILE, DATA_DIR
 from browser_utils import BrowserFactory
-from secure_storage import ensure_private_dir, harden_private_file, write_private_json
+from secure_storage import ensure_private_dir, write_private_json
 
 
 class AuthManager:
@@ -158,11 +158,11 @@ class AuthManager:
                     pass
 
     def _save_browser_state(self, context: BrowserContext):
-        """Save browser state to disk"""
+        """Save browser state through the owner-only atomic JSON writer."""
         try:
             # Save storage state (cookies, localStorage)
-            context.storage_state(path=str(self.state_file))
-            harden_private_file(self.state_file)
+            state = context.storage_state()
+            write_private_json(self.state_file, state)
             print(f"  💾 Saved browser state to: {self.state_file}")
         except Exception as e:
             print(f"  ❌ Failed to save browser state: {e}")
