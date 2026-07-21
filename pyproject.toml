@@ -4,14 +4,14 @@ version = "0.1.0"
 description = "Claude Code skill for source-grounded NotebookLM research from uploaded documents"
 requires-python = ">=3.10"
 dependencies = [
-  "patchright==1.60.1",
+  "patchright==1.61.2",
   "python-dotenv==1.2.2",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=9.1.1",
-  "ruff==0.15.20",
+  "ruff==0.15.22",
 ]
 
 [tool.pytest.ini_options]
