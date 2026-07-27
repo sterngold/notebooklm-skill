@@ -115,9 +115,11 @@ Co-authored-by: Claude <noreply@anthropic.com>
 - **Squash-merge only.** Linear history required.
 - Required passing check: `ci` — the aggregate job in `.github/workflows/ci.yml` that gates commit convention, secret scan, and any repo-specific blocking backstops. Python/Node lint+test jobs may be advisory when configured with `continue-on-error: true`; skipped stack-conditional jobs are allowed, and making them blocking requires changing the workflow first.
 - Solo flow: 0 required human reviewers. CodeRabbit / Copilot Review = required reviewer.
-- **Review budget (bot findings):** one bot review pass per PR — never loop `@codex review`
-  chasing zero nits. Fix every P1 and any P2 that is a real correctness issue; defer the
-  remaining P2s to a follow-up issue and resolve each thread with the pointer
+- **Review budget (bot findings):** one Codex review pass per PR — never loop `@codex review`
+  chasing zero nits. Codex is the budgeted reviewer; the single automatic pass from
+  required/always-on reviewers (Copilot, CodeRabbit) is outside this budget and not
+  something to re-trigger. Fix every P1 and any P2 that is a real correctness issue;
+  defer the remaining P2s to a follow-up issue and resolve each thread with the pointer
   ("Deferred per Review budget — tracked in `<follow-up>`"). Bot reviews are advisory
   input, not a gate: `ci` is the hard gate, and the absence of a fresh bot re-review is
   never a reason to hold a green PR.
