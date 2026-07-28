@@ -21,3 +21,10 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# ruff 0.16 expanded the default rule set from 59 to 413 rules (see
+# https://astral.sh/blog/ruff-v0.16.0). Pin to the pre-0.16 default
+# (E4, E7, E9, F) so a ruff version bump doesn't silently widen what
+# this repo enforces. Revisit deliberately if we want the wider set.
+select = ["E4", "E7", "E9", "F"]
