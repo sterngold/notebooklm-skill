@@ -2,13 +2,22 @@ name: ci
 
 on:
   pull_request:
+    # `edited` included: the PR TITLE is the squash subject the pr-title job
+    # gates, so a title edit must re-evaluate CI (AND-1960) — the default
+    # types (opened/synchronize/reopened) never see it.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # PR-event runs get a PER-RUN group on purpose (no dedup, nothing to cancel):
+  # a run that ends "cancelled" on the head SHA can strand the required `ci`
+  # context (AND-1960), and both cancel-in-progress settings can produce one —
+  # true cancels in-flight runs, false still cancels queued ones. Push runs
+  # keep the shared group + cancellation; nothing gates on them.
+  group: ci-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -40,6 +49,29 @@ jobs:
       - uses: wagoid/commitlint-github-action@v6
         with:
           configFile: .commitlintrc.json
+
+  pr-title:
+    name: pr title (squash subject)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+      # This repo squash-merges: the PR TITLE becomes the commit subject on
+      # main, so per-commit commitlint alone cannot protect main. Lint the
+      # title against the same config the commit lint uses.
+      # Title goes through env (never template-interpolated into the script).
+      # Installed into the checkout (--no-save): commitlint resolves `extends`
+      # from the CONFIG FILE's directory, so the preset must be in the repo
+      # root's node_modules — npx's temp prefix is invisible from there.
+      # Exact pins + --ignore-scripts: a required gate must not execute
+      # whatever the registry serves today, nor any dep lifecycle script.
+      - name: lint PR title against commitlint config
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          npm install --no-save --no-audit --no-fund --ignore-scripts \
+            @commitlint/cli@21.2.1 @commitlint/config-conventional@21.2.0
+          printf '%s\n' "$TITLE" | npx --no-install commitlint --config .commitlintrc.json
 
   gitleaks:
     name: secret scan
@@ -107,14 +139,14 @@ jobs:
 
   ci:
     name: ci
-    needs: [commitlint, gitleaks, python, node, swift]
+    needs: [commitlint, pr-title, gitleaks, python, node, swift]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: aggregate
         run: |
           # Fail if any required upstream job failed (skipped is OK for stack-conditional jobs)
-          for r in "${{ needs.commitlint.result }}" "${{ needs.gitleaks.result }}" \
+          for r in "${{ needs.commitlint.result }}" "${{ needs.pr-title.result }}" "${{ needs.gitleaks.result }}" \
                    "${{ needs.python.result }}" "${{ needs.node.result }}" "${{ needs.swift.result }}"; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
               echo "Upstream job failed: $r"
